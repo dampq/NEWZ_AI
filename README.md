@@ -1,4 +1,4 @@
-# NEWZ AI ✧
+# NEWZ AI 📰
 
 **Your World, In Perspective.**
 
