@@ -45,11 +45,12 @@ export function createApi({fetcher=fetch,authorize=authenticate,key=()=>process.
  if(r.status===404&&!configuredModel){
  // Discover a supported Flash model instead of guessing another retired model ID.
  const available=await fetcher('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',{headers:{'x-goog-api-key':key()},signal:AbortSignal.timeout(10000)});
- if(available.ok){const catalog=await available.json();const candidates=(catalog.models||[]).filter(m=>m.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(m.name)&&!/(preview|experimental|exp-|image|tts|live)/.test(m.name));const fallback=candidates.find(m=>m.name.endsWith('flash-lite'))||candidates[0];if(fallback){model=fallback.name.replace(/^models\//,'');r=await generate(model)}}
+ if(available.ok){const catalog=await available.json();const candidates=(catalog.models||[]).filter(m=>m.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(m.name)&&!/(preview|experimental|exp-|image|tts|live)/.test(m.name));const alternatives=[...new Set(candidates.map(m=>m.name.replace(/^models\//,'')))].filter(name=>name!==model).slice(0,3);for(const alternative of alternatives){model=alternative;r=await generate(model);if(r.status!==404)break}}
  }
  if(!r.ok){
  const messages={404:`Gemini model "${model}" is unavailable. In Render Environment, set NEWZ_AI_MODEL to an exact model ID available for your Google AI Studio key, then redeploy.`,400:'Gemini rejected the request. Check that GEMINI_API_KEY is a valid Google AI Studio key and the model supports text generation.',401:'Gemini authentication failed. Check GEMINI_API_KEY in Render.',403:'Gemini access denied. Check API key restrictions and Gemini API availability for your project and region.',429:'Gemini quota exceeded. Check your Google AI Studio quota or try again later.'};
- return send(r.status===429?429:502,{error:messages[r.status]||`Gemini is temporarily unavailable (HTTP ${r.status}). Please try again later.`});
+ let detail='';try{const payload=await r.json();if(typeof payload.error?.message==='string')detail=payload.error.message.split(key()).join('[redacted]').replace(/AIza[\w-]+/g,'[redacted]').slice(0,500)}catch{}
+ return send(r.status===429?429:502,{error:(messages[r.status]||`Gemini is temporarily unavailable (HTTP ${r.status}). Please try again later.`)+(detail?' Google says: '+detail:'')});
  }
  const result=await r.json();const answer=result.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('\n');if(!answer)throw Error('AI provider returned no answer.');return send(200,{answer});
  }
