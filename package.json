@@ -1,1 +1,24 @@
-{"name":"newz-ai","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"vite build","preview":"vite preview --host 0.0.0.0"},"devDependencies":{"vite":"^6.4.1"},"dependencies":{"rss-parser":"^3.13.0"}}
+{
+  "name": "newz-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "start": "node --env-file-if-exists=.env.local server/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "express": "^5.3.0",
+    "rss-parser": "^3.13.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

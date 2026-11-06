@@ -1,0 +1,12 @@
+import express from 'express';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createApi} from './api.js';
+const app=express();
+app.disable('x-powered-by');
+app.get('/health',(_req,res)=>res.json({status:'ok'}));
+app.use(createApi());
+const dist=fileURLToPath(new URL('../dist/',import.meta.url));
+app.use(express.static(dist));
+app.get('/{*path}',(_req,res)=>res.sendFile(path.join(dist,'index.html')));
+app.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log('NEWZ server ready'));

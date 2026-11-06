@@ -12,12 +12,27 @@ export async function news(fetcher=fetch){
  const items=results.flatMap(r=>r.status==='fulfilled'?r.value:[]);if(!items.length)throw Error('Live news is unavailable. Check access to feeds.bbci.co.uk.');
  cache={stories:items,updatedAt:new Date().toISOString(),partial:results.some(r=>r.status==='rejected')};expires=Date.now()+300000;return cache;
 }
-export function createApi({fetcher=fetch,key=()=>process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY}={}){return async(req,res,next)=>{
+export async function authenticate(req,fetcher=fetch){
+ const url=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL;
+ const publicKey=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+ if(!url||!publicKey)throw Object.assign(Error('Account service is not configured.'),{status:503});
+ const token=req.headers?.authorization;
+ if(!token?.startsWith('Bearer '))throw Object.assign(Error('Please log in to use AI.'),{status:401});
+ const r=await fetcher(`${url.replace(/\/$/,'')}/auth/v1/user`,{headers:{apikey:publicKey,Authorization:token},signal:AbortSignal.timeout(10000)});
+ if(!r.ok)throw Object.assign(Error('Your session expired. Please log in again.'),{status:401});
+ const user=await r.json();if(!user.id)throw Object.assign(Error('Invalid account session.'),{status:401});return user;
+}
+const usage=new Map();
+export function createApi({fetcher=fetch,authorize=authenticate,key=()=>process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY}={}){return async(req,res,next)=>{
  const path=new URL(req.url,'http://localhost').pathname;if(!path.startsWith('/api/'))return next();
  const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
  try{
  if(path==='/api/news'&&req.method==='GET')return send(200,await news(fetcher));
  if(path==='/api/chat'&&req.method==='POST'){
+ const user=await authorize(req);
+ const now=Date.now(),limit=usage.get(user.id);if(limit&&now-limit.start<60000&&limit.count>=5)return send(429,{error:'Please wait a minute before asking another question.'});
+ if(usage.size>10000){for(const [id,value] of usage)if(now-value.start>=60000)usage.delete(id)}
+ if(limit&&now-limit.start<60000)limit.count++;else usage.set(user.id,{start:now,count:1});
  if(!key())return send(503,{error:'Add GEMINI_API_KEY securely in environment settings to enable AI answers.'});
  let body='';for await(const chunk of req){body+=chunk;if(body.length>12000)return send(413,{error:'Question is too large.'})}
  let data;try{data=JSON.parse(body)}catch{return send(400,{error:'Invalid JSON.'})}
@@ -29,5 +44,5 @@ export function createApi({fetcher=fetch,key=()=>process.env.GEMINI_API_KEY||pro
  const result=await r.json();const answer=result.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('\n');if(!answer)throw Error('AI provider returned no answer.');return send(200,{answer});
  }
  return send(404,{error:'Unknown API route.'});
- }catch(e){return send(502,{error:e.message||'Provider unavailable.'})}
+ }catch(e){return send(e.status||502,{error:e.message||'Provider unavailable.'})}
 }}
